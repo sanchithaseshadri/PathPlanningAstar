@@ -1,10 +1,12 @@
+#!/usr/bin/env python
+
 """
 Given an image of a map, create an occupancy grid map from it.
 This occupancy grid will be used in the A-star search.
 """
-#import rospy
-#from geometry_msgs.msg import Point
-#from nav_msgs.msg import OccupancyGrid
+import rospy
+from geometry_msgs.msg import Point
+from nav_msgs.msg import OccupancyGrid
 from PIL import Image
 import math
 
@@ -20,10 +22,8 @@ class Map:
 		"""
 		Construct an occupancy grid map from the image
 		"""
-		self.map_image = Image.open('Map.png')
+		self.map_image = Image.open('./project/scripts/Map.png')
 		self.width, self.height = self.map_image.size
-		#self.origin = Point()
-		#self.origin.x, self.origin.y = self.width/2, self.height/2
 		self.pixels = self.map_image.load()
 		self.grid_map = []
 		for x in range(self.width):

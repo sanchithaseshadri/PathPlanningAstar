@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Dynamically generate graph nodes from current location
 """
@@ -6,11 +8,13 @@ import math
 from transformations import world_to_pixel, pixel_to_world, worldtheta_to_pixeltheta
 
 SIMILARITY_THRESHOLD = 0.1
+SAFETY_OFFSET = 5	# number of pixels away from the wall the robot should remain
+
 
 class Node:
-	def __init__(self, pos, theta, parent=None):
-		self.x = pos.position.x
-		self.y = pos.position.y
+	def __init__(self, x, y, theta=0.0, parent=None):
+		self.x = x
+		self.y = y
 		self.theta = theta
 		self.parent = parent
 		# f(n) = h(n) + g(n)
@@ -36,14 +40,30 @@ class Node:
 		y_new = self.y + math.sin(theta_new) * move[0]  # d.sin(theta)
 		return Node(x_new, y_new, theta_new)
 
-	def is_move_valid(self, map, move):
+	def is_move_valid(self, grid_map, move):
 		"""
 		Return true if required move is legal
 		"""
-		goal = self.apply(move)
+		goal = self.apply_move(move)
 		# convert goal coordinates to pixel coordinates before checking this
-		goal_pixel = world_to_pixel(goal.x, goal.y)
-		if map[goal_pixel[0]][goal_pixel[1]]:
+		goal_pixel = world_to_pixel((goal.x, goal.y), (700, 2000))
+		# check if too close to the walls
+		if goal_pixel[0] >= SAFETY_OFFSET and not grid_map[goal_pixel[0]-SAFETY_OFFSET][goal_pixel[1]]:
+			return False
+		if goal_pixel[1] >= SAFETY_OFFSET and not grid_map[goal_pixel[0]][goal_pixel[1]-SAFETY_OFFSET]:
+			return False
+		if goal_pixel[0] >= SAFETY_OFFSET and goal_pixel[1] >= SAFETY_OFFSET and not grid_map[goal_pixel[0]-SAFETY_OFFSET][goal_pixel[1]-SAFETY_OFFSET]:
+			return False
+		if grid_map[goal_pixel[0]][goal_pixel[1]]:
+			return True
+		return False
+
+	def is_valid(self, grid_map):
+		"""
+		Return true if the location on the map is valid, ie, in obstacle free zone
+		"""
+		goal_pixel = world_to_pixel((self.x, self.y), (700, 2000))
+		if grid_map[goal_pixel[0]][goal_pixel[1]]:
 			return True
 		return False
 

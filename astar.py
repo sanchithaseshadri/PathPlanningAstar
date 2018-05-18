@@ -1,49 +1,70 @@
+#!/usr/bin/env python
+
 import heapq as hq
 from buildMap import Map
+from node import Node
 from util import radians
+from geometry_msgs.msg import Twist, Pose
 from safegoto import SafeGoTo
+import rospy
 import copy
+import math
 
-ROBOT_SIZE = 0.2 	# change this 
+ROBOT_SIZE = 0.1 
 G_MULTIPLIER = 0.2
-MOVES = [ (0.1, radians(0)), 	# move ahead
-		  (-0.1, radians(0)), 	# move backwards
-		  (0, radians(90)), 		# turn left
+MOVES = [ (0.2, radians(0)), 	# move ahead
+		  (-0.2, radians(0)), 	# move backwards
+		  (0, radians(90)), 	# turn left
 		  (0, -radians(90)) ]	# turn right
-TOLERANCE = 1.0
+TOLERANCE = 0.2
 
 class PathPlanner:
-	def __init__(self, start, goal):
-		# odometry - to get current location 
-		self.odom_subscriber = rospy.Subscriber('/r1/odom', Odometry, self.odom_callback)
-		self.pos = Pose()
-		self.theta = 0
-
+	def __init__(self, start, theta, goal):
+		print("building map....")
 		# map remains constant
-		self.map = Map()
+		self.map = Map().grid_map
 		self.start = start
+		self.theta = theta
 		self.goal = goal
-
-	def odom_callback(self, odom):
-		"""
-		Callback function for the odometry subscriber, which will continuously update the 
-		current position of the robot.
-		@arg 	odom 	the odometry data of the robot
-		"""		
-		self.pos = odom.pose.pose
-		self.theta = 2*math.atan2(self.pos.orientation.z, self.pos.orientation.w)
+		print("map built. planner initialized")
 
 	def plan(self):
-		final = a_star(self.start, self.goal, self.moves, self.map)
+		final = a_star(self.start, self.goal, self.map)
 		if final == None:
-			rospy.loginfo("Path not found.")
+			print("Path not found.")
 		else:
-			rospy.loginfo("Constructing path..")
+			print("Constructing path..")
 			path = self.construct_path(final)	# path in world coordinates
-			# publish this path - goto for each of the path components? with a skip?
-			# if using goto, convert each to world coordinates
+			print("path: ")
+			points = []
+			for step in path:
+				points.append((step.x, step.y))
+			# publish this path - safegoto for each of the path components
+			points.reverse()
+			points = points[1:]
+			points.append((self.goal.x, self.goal.y))
+			for p in range(len(points)):
+				print("x:", points[p][0], " y:", points[p][1])
+			# first process the points
+			translate_x = points[0][0]
+			translate_y = points[0][1]
+			for p in range(len(points)):
+				new_x = points[p][0] - translate_x
+				new_y = points[p][1] - translate_y
+				if self.theta == math.pi/2:
+					points[p] = [-new_y, new_x]
+				elif self.theta == math.pi:
+					points[p] = [-new_x, -new_y]
+				elif self.theta == -math.pi/2:
+					points[p] = [new_y, -new_x]
+				else:			
+					points[p] = [new_x, new_y]
+			# translate coordinates for theta			
+			
+				
+			# run safegoto on the translated coordinates
 			robot = SafeGoTo()
-			robot.travel(path)
+			robot.travel(points)
 
 
 	def construct_path(self, end):
@@ -58,8 +79,14 @@ class PathPlanner:
 		return path
 
 
-def a_star(start, end, map):
-	# start, end are in world coordinates
+def a_star(start, end, grid_map):
+	# start, end are in world coordinates and Node objects
+
+	# before starting A star, check if goal is reachable - ie, in an obstacle free zone - if not, directly reject
+	if not end.is_valid(grid_map):
+		print("goal invalid")
+		return None
+	print("goal valid")
 	opened = []
 	closed=[]
 	final = None
@@ -67,16 +94,16 @@ def a_star(start, end, map):
 
 	while (final == None) and opened:
 		# q is a Node object with x, y, theta
-		q = heapq.heappop(opened)[1]
+		q = hq.heappop(opened)[1]
 		for move in MOVES:		# move is in world coordinates
-
-			if (q.is_move_valid(map, move)):
+			if (q.is_move_valid(grid_map, move)):
 				next_node = q.apply_move(move)	# Node is returned in world coordinates
 			else:
 				next_node = None
-
+			#print("next node is : ", next_node) 
 			if next_node != None:
 				if next_node.euclidean_distance(end) < TOLERANCE:
+					next_node.parent = q					
 					final = next_node
 					break
 				# update heuristics h(n) and g(n)
@@ -99,7 +126,11 @@ def a_star(start, end, map):
 
 
 
-
-
+if __name__ == '__main__':
+	start = Node(-12.0, 12.0, math.pi)
+	goal = Node(-15.0, 12.0, math.pi)
+	planner = PathPlanner(start, math.pi, goal)
+	planner.plan()
+	
 
 
